@@ -3,6 +3,9 @@ import tensorflow as tf
 import numpy as np
 import scipy.misc
 
+batch_size = 64
+z_dim = 128
+
 
 def read_and_decode(tfrecords_dir, height, width, channel=3):
     tfrecords_list = os.listdir(tfrecords_dir)
@@ -37,3 +40,8 @@ def save_sample(images, size, path):
 
     # save the array
     return scipy.misc.imsave(path, merge_img)
+
+
+def get_batch_noises():
+    noises = np.random.normal(0.0, 1.0, [batch_size, z_dim]).astype(np.float32)
+    return noises
