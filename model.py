@@ -6,13 +6,9 @@ from utils import read_and_decode, save_sample
 max_iter = 200000
 batch_size = 64
 z_dim = 128
-learning_rate_gen = 5e-5
-learning_rate_dis = 5e-5
-image_height = 128
-image_width = 128
+image_height = 64
+image_width = 64
 channel = 3
-clamp_lower = -0.01
-clamp_upper = 0.01
 device = '/gpu:2'
 tfrecords_dir = '../data/celeba_tfrecords'
 sample_dir = './sample_wgan'
@@ -32,8 +28,8 @@ if wgan_gp is True:
 
 
 def generator(z):
-    first_feature_h = 8
-    first_feature_w = 8
+    first_feature_h = 4
+    first_feature_w = 4
     with tf.variable_scope('generator'):
         # tf.contrib.layers.fully_connected(inputs, num_outputs, activation_fn=tf.nn.relu, normalizer_fn=None)
         train = layers.fully_connected(z, first_feature_h*first_feature_w*512, activation_fn=tf.nn.leaky_relu,
@@ -60,13 +56,18 @@ def generator(z):
 
 
 def discriminator(image, reuse=False):
+    if wgan_gp is True:
+        normalizer_fn = layers.layer_norm
+    else:
+        normalizer_fn = layers.batch_norm
+
     with tf.variable_scope('discriminator', reuse=reuse):
         image = layers.conv2d(image, 64, kernel_size=3, stride=2, activation_fn=tf.nn.leaky_relu,
-                              normalizer_fn=layers.batch_norm)
+                              normalizer_fn=normalizer_fn)
         image = layers.conv2d(image, 128, kernel_size=3, stride=2, activation_fn=tf.nn.leaky_relu,
-                              normalizer_fn=layers.batch_norm)
+                              normalizer_fn=normalizer_fn)
         image = layers.conv2d(image, 256, kernel_size=3, stride=2, activation_fn=tf.nn.leaky_relu,
-                              normalizer_fn=layers.batch_norm)
+                              normalizer_fn=normalizer_fn)
         image = layers.conv2d(image, 512, kernel_size=3, stride=2, activation_fn=tf.nn.leaky_relu)
 
         image = tf.reshape(image, [batch_size, -1])
@@ -109,12 +110,12 @@ def build_graph():
     dis_counter = tf.Variable(trainable=False, initial_value=0, dtype=tf.int32)
     # ------------------------
     if wgan_gp is False:
-        gen_opt = layers.optimize_loss(loss=gen_loss, learning_rate=learning_rate_gen,
-                                       optimizer=tf.train.RMSPropOptimizer,
-                                       variables=gen_params, global_step=gen_counter)
-        dis_opt = layers.optimize_loss(loss=dis_loss, learning_rate=learning_rate_dis,
-                                       optimizer=tf.train.RMSPropOptimizer,
-                                       variables=dis_params, global_step=dis_counter)
+        gen_opt = tf.train.RMSPropOptimizer(learning_rate=5e-5).\
+            minimize(gen_loss, var_list=gen_params, global_step=gen_counter)
+
+        dis_opt = tf.train.RMSPropOptimizer(learning_rate=5e-5).\
+            minimize(dis_loss, var_list=dis_params, global_step=dis_counter)
+
     else:
         gen_opt = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9).\
             minimize(gen_loss, var_list=gen_params, global_step=gen_counter)
@@ -123,7 +124,7 @@ def build_graph():
     # ----------------------------------
     # clip weight in discriminator
     if wgan_gp is False:
-        dis_clipped_var = [tf.assign(var, tf.clip_by_value(var, clamp_lower, clamp_upper)) for var in dis_params]
+        dis_clipped_var = [tf.assign(var, tf.clip_by_value(var, -0.01, 0.01)) for var in dis_params]
         # merge the clip operations on discriminator variables
         with tf.control_dependencies([dis_opt]):
             dis_opt = tf.tuple(dis_clipped_var)

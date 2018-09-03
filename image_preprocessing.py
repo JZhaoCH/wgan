@@ -5,8 +5,10 @@ import math
 import tensorflow as tf
 
 
-width = 128
-height = 128
+crop_width = 128
+crop_height = 128
+resize_width = 64
+resize_height = 64
 channel = 3
 images_count_each_tfrecords = 20000
 images_dir = '../data/img_align_celeba'
@@ -28,6 +30,11 @@ def convert_to(images_dir, tfrecords_dir):
     """
     if not os.path.exists(tfrecords_dir):
         os.mkdir(tfrecords_dir)
+
+    if len(os.listdir(tfrecords_dir)) != 0:
+        print('the %s is not empty' % tfrecords_dir)
+        exit()
+
     # set the crop size
     file_list = os.listdir(images_dir)
     list_len = len(file_list)
@@ -56,15 +63,15 @@ def convert_to(images_dir, tfrecords_dir):
 
             # crop the center of images
             w, h = img.size[:2]
-            j = (w - width) // 2
-            k = (h - height) // 2
+            j = (w - crop_width) // 2
+            k = (h - crop_height) // 2
             # box ask for two points
-            box = (j, k, j + width, k + height)
+            box = (j, k, j + crop_width, k + crop_height)
             img = img.crop(box=box)
-
+            img = img.resize((resize_width, resize_height))
             # convert to bytes
             img_raw = img.tobytes()
-            if len(img_raw) != width * height * channel:
+            if len(img_raw) != resize_width * resize_height * channel:
                 continue
             total_count += 1
             example = tf.train.Example(features=tf.train.Features(feature={
