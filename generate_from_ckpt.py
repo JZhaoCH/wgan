@@ -1,7 +1,6 @@
 import tensorflow as tf
 from model import generator
-from utils import save_sample, get_batch_noises
-
+from utils import save_sample
 
 batch_size = 64
 z_dim = 128
@@ -25,7 +24,8 @@ def generate_from_ckpt():
             lasted_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
             if lasted_checkpoint is not None:
                 saver.restore(sess, lasted_checkpoint)
-                images = sess.run(generate_images, feed_dict={z: get_batch_noises()})
+                noises = tf.random_normal([batch_size, z_dim], mean=0.0, stddev=1.0)
+                images = sess.run(generate_images, feed_dict={z: noises})
                 save_sample(images, [8, 8], './generated_image.jpg')
                 print('generate a image:', './generated_image.jpg')
             else:

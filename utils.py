@@ -41,7 +41,3 @@ def save_sample(images, size, path):
     # save the array
     return scipy.misc.imsave(path, merge_img)
 
-
-def get_batch_noises():
-    noises = np.random.normal(0.0, 1.0, [batch_size, z_dim]).astype(np.float32)
-    return noises

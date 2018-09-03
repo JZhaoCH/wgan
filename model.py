@@ -1,10 +1,9 @@
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
-import numpy as np
 import os
-from utils import read_and_decode, save_sample, get_batch_noises
+from utils import read_and_decode, save_sample
 
-max_iter = 100000
+max_iter = 200000
 batch_size = 64
 z_dim = 128
 learning_rate_gen = 5e-5
@@ -15,12 +14,21 @@ channel = 3
 clamp_lower = -0.01
 clamp_upper = 0.01
 device = '/gpu:2'
-ckpt_dir = './ckpt_wgan'
 tfrecords_dir = '../data/celeba_tfrecords'
-sample_dir = './sample'
+sample_dir = './sample_wgan'
+ckpt_dir = './ckpt_wgan'
+log_dir = './log_wgan'
 load_model = True
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
+wgan_gp = True
+gp_lambda = 10
+
+if wgan_gp is True:
+    sample_dir = './sample_wgan_gp'
+    ckpt_dir = './ckpt_wgan_gp'
+    log_dir = './log_wgan_gp'
 
 
 def generator(z):
@@ -72,33 +80,60 @@ def build_graph():
     true_images = tf.train.shuffle_batch([images_data_set], batch_size=batch_size, capacity=5000,
                                          min_after_dequeue=2500, num_threads=2)
 
-    noises_tf_ph = tf.placeholder(np.float32, shape=[batch_size, z_dim])
-    fake_images = generator(noises_tf_ph)
+    noises = tf.random_normal([batch_size, z_dim], mean=0.0, stddev=1.0)
+    fake_images = generator(noises)
     true_logits = discriminator(true_images)
     fake_logits = discriminator(fake_images, reuse=True)
     dis_loss = tf.reduce_mean(fake_logits-true_logits)
+    # ------------------------------------
+    # add gradient penalty
+    if wgan_gp is True:
+        alpha = tf.random_uniform([batch_size, 1, 1, 1], minval=0., maxval=1.)
+        interpolated = alpha*true_images + (1-alpha)*fake_images
+        inte_logit = discriminator(interpolated, reuse=True)
+        gradients = tf.gradients(inte_logit, [interpolated, ])[0]
+        grad_l2 = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=[1, 2, 3]))
+        gradient_penalty = tf.reduce_mean(tf.square(grad_l2-1))
+        gp_loss_sum = tf.summary.scalar("gp_loss", gradient_penalty)
+        grad = tf.summary.scalar("grad_norm", tf.nn.l2_loss(gradients))
+        dis_loss += gp_lambda * gradient_penalty
+
     gen_loss = tf.reduce_mean(-fake_logits)
+    gen_loss_sum = tf.summary.scalar("gen_loss", gen_loss)
+    dis_loss_sum = tf.summary.scalar("dis_loss", dis_loss)
 
     gen_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
     dis_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
 
     gen_counter = tf.Variable(trainable=False, initial_value=0, dtype=tf.int32)
     dis_counter = tf.Variable(trainable=False, initial_value=0, dtype=tf.int32)
-
-    gen_opt = layers.optimize_loss(loss=gen_loss, learning_rate=learning_rate_gen, optimizer=tf.train.RMSPropOptimizer,
-                                   variables=gen_params, global_step=gen_counter)
-    dis_opt = layers.optimize_loss(loss=dis_loss, learning_rate=learning_rate_dis, optimizer=tf.train.RMSPropOptimizer,
-                                   variables=dis_params, global_step=dis_counter)
-
-    dis_clipped_var = [tf.assign(var, tf.clip_by_value(var, clamp_lower, clamp_upper)) for var in dis_params]
-    with tf.control_dependencies([dis_opt]):
-        dis_opt = tf.tuple(dis_clipped_var)
-    return gen_opt, dis_opt, noises_tf_ph, fake_images
+    # ------------------------
+    if wgan_gp is False:
+        gen_opt = layers.optimize_loss(loss=gen_loss, learning_rate=learning_rate_gen,
+                                       optimizer=tf.train.RMSPropOptimizer,
+                                       variables=gen_params, global_step=gen_counter)
+        dis_opt = layers.optimize_loss(loss=dis_loss, learning_rate=learning_rate_dis,
+                                       optimizer=tf.train.RMSPropOptimizer,
+                                       variables=dis_params, global_step=dis_counter)
+    else:
+        gen_opt = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9).\
+            minimize(gen_loss, var_list=gen_params, global_step=gen_counter)
+        dis_opt = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9).\
+            minimize(dis_loss, var_list=dis_params, global_step=dis_counter)
+    # ----------------------------------
+    # clip weight in discriminator
+    if wgan_gp is False:
+        dis_clipped_var = [tf.assign(var, tf.clip_by_value(var, clamp_lower, clamp_upper)) for var in dis_params]
+        # merge the clip operations on discriminator variables
+        with tf.control_dependencies([dis_opt]):
+            dis_opt = tf.tuple(dis_clipped_var)
+    return gen_opt, dis_opt, fake_images
 
 
 def train():
     with tf.device(device):
-        gen_opt, dis_opt, noises_tf_ph, fake_images = build_graph()
+        gen_opt, dis_opt, fake_images = build_graph()
+    merged_all = tf.summary.merge_all()
     saver = tf.train.Saver()
     session_config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
     session_config.gpu_options.allow_growth = True
@@ -108,6 +143,7 @@ def train():
         # add tf.train.start_queue_runners, it's important to start queue for tf.train.shuffle_batch
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
         iter_start = 0
         if load_model:
             lasted_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
@@ -128,15 +164,23 @@ def train():
 
             # train discriminator
             for i in range(dis_iter):
-                sess.run(dis_opt, feed_dict={noises_tf_ph: get_batch_noises()})
+                if iter_count % 100 == 99 or i == 0:
+                    _, merged = sess.run([dis_opt, merged_all])
+                    summary_writer.add_summary(merged, iter_count)
+                else:
+                    sess.run(dis_opt)
 
             # train generator
-            sess.run(gen_opt, feed_dict={noises_tf_ph: get_batch_noises()})
+            if iter_count % 100 == 99:
+                _, merged = sess.run([gen_opt, merged_all])
+                summary_writer.add_summary(merged, iter_count)
+            else:
+                sess.run(gen_opt)
 
             # save sample
-            if iter_count % 100 == 0:
+            if iter_count % 1000 == 999:
                 sample_path = os.path.join(sample_dir, '%d.jpg' % iter_count)
-                sample = sess.run(fake_images, feed_dict={noises_tf_ph: get_batch_noises()})
+                sample = sess.run(fake_images)
                 sample = (sample+1)/2
                 save_sample(sample, [4, 4], sample_path)
                 print('save sample:', sample_path)
