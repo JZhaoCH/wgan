@@ -3,7 +3,7 @@ import tensorflow.contrib.layers as layers
 import os
 from utils import read_and_decode, save_sample
 
-max_iter = 200000
+max_iter = 400000
 batch_size = 64
 z_dim = 128
 image_height = 64
@@ -86,6 +86,9 @@ def build_graph():
     true_logits = discriminator(true_images)
     fake_logits = discriminator(fake_images, reuse=True)
     dis_loss = tf.reduce_mean(fake_logits-true_logits)
+    gen_loss = tf.reduce_mean(-fake_logits)
+    gen_loss_sum = tf.summary.scalar("gen_loss", gen_loss)
+    gen_summary = tf.summary.merge([gen_loss_sum])
     # ------------------------------------
     # add gradient penalty
     if wgan_gp is True:
@@ -96,12 +99,13 @@ def build_graph():
         grad_l2 = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=[1, 2, 3]))
         gradient_penalty = tf.reduce_mean(tf.square(grad_l2-1))
         gp_loss_sum = tf.summary.scalar("gp_loss", gradient_penalty)
-        grad = tf.summary.scalar("grad_norm", tf.nn.l2_loss(gradients))
+        grad_sum = tf.summary.scalar("grad_norm", tf.nn.l2_loss(gradients))
         dis_loss += gp_lambda * gradient_penalty
-
-    gen_loss = tf.reduce_mean(-fake_logits)
-    gen_loss_sum = tf.summary.scalar("gen_loss", gen_loss)
-    dis_loss_sum = tf.summary.scalar("dis_loss", dis_loss)
+        dis_loss_sum = tf.summary.scalar("dis_loss", dis_loss)
+        dis_summary = tf.summary.merge([dis_loss_sum, gp_loss_sum, grad_sum])
+    else:
+        dis_loss_sum = tf.summary.scalar("dis_loss", dis_loss)
+        dis_summary = tf.summary.merge([dis_loss_sum])
 
     gen_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
     dis_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
@@ -128,13 +132,12 @@ def build_graph():
         # merge the clip operations on discriminator variables
         with tf.control_dependencies([dis_opt]):
             dis_opt = tf.tuple(dis_clipped_var)
-    return gen_opt, dis_opt, fake_images
+    return gen_opt, dis_opt, fake_images, gen_summary, dis_summary
 
 
 def train():
     with tf.device(device):
-        gen_opt, dis_opt, fake_images = build_graph()
-    merged_all = tf.summary.merge_all()
+        gen_opt, dis_opt, fake_images, gen_summary, dis_summary = build_graph()
     saver = tf.train.Saver()
     session_config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
     session_config.gpu_options.allow_growth = True
@@ -166,15 +169,15 @@ def train():
             # train discriminator
             for i in range(dis_iter):
                 if iter_count % 100 == 99 or i == 0:
-                    _, merged = sess.run([dis_opt, merged_all])
-                    summary_writer.add_summary(merged, iter_count)
+                    _, summary = sess.run([dis_opt, dis_summary])
+                    summary_writer.add_summary(summary, iter_count)
                 else:
                     sess.run(dis_opt)
 
             # train generator
             if iter_count % 100 == 99:
-                _, merged = sess.run([gen_opt, merged_all])
-                summary_writer.add_summary(merged, iter_count)
+                _, summary = sess.run([gen_opt, gen_summary])
+                summary_writer.add_summary(summary, iter_count)
             else:
                 sess.run(gen_opt)
 
