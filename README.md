@@ -16,15 +16,37 @@
 </p>
 
 ### generating images
-* `tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9), after 40K iteration`
+* `tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9), iteration=20k`
 <p align="center">
-  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/wgan_gp_generating_image1.jpg">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_20k_generating_image1.jpg" title="iteration 20k">
 </p>
 <p align="center">
-  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/wgan_gp_generating_image2.jpg">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_20k_generating_image2.jpg" title="iteration 20k">
 </p>
 <p align="center">
-  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/wgan_gp_generating_image3.jpg">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_20k_generating_image3.jpg" title="iteration 20k">
+</p>
+
+* `tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9), iteration=40k`
+<p align="center">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_40k_generating_image1.jpg" title="iteration 40k">
+</p>
+<p align="center">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_40k_generating_image2.jpg" title="iteration 40k">
+</p>
+<p align="center">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_40k_generating_image3.jpg" title="iteration 40k">
+</p>
+
+* `tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0., beta2=0.9), after 60K iteration`
+<p align="center">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_60k_generating_image1.jpg" title="iteration 60k">
+</p>
+<p align="center">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_60k_generating_image2.jpg" title="iteration 60k">
+</p>
+<p align="center">
+  <img src="https://github.com/JZhaoCH/wgan-tensorflow/blob/master/image/wgan_gp/iteration_60k_generating_image3.jpg" title="iteration 60k">
 </p>
 
 ## References
